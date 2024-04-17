@@ -4,24 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-class ConvBnLeakyRelu2d(nn.Module):
-    # convolution
-    # batch normalization
-    # leaky relu
-    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, stride=1, dilation=1, groups=1):
-        super(ConvBnLeakyRelu2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation, groups=groups)
-        self.bn   = nn.BatchNorm2d(out_channels)
-    def forward(self, x):
-        return F.leaky_relu(self.conv(x), negative_slope=0.2)
-
-class ConvBnTanh2d(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, stride=1, dilation=1, groups=1):
-        super(ConvBnTanh2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation, groups=groups)
-        self.bn   = nn.BatchNorm2d(out_channels)
-    def forward(self,x):
-        return torch.tanh(self.conv(x))/2+0.5
 
 class ConvLeakyRelu2d(nn.Module):
     # convolution
@@ -83,54 +65,3 @@ class RGBD(nn.Module):
         x2=self.convup(x2)
         return F.leaky_relu(x1+x2,negative_slope=0.1)
 
-class FusionNet(nn.Module):
-    def __init__(self,inf_ch,vis_ch,output):
-        super(FusionNet, self).__init__()
-         #[64, 112, 160, 208]
-        output=1
-        self.vis_conv=ConvLeakyRelu2d(1,vis_ch[0])
-        self.vis_rgbd1=RGBD(vis_ch[0], vis_ch[1])
-        self.vis_rgbd2 = RGBD(vis_ch[1], vis_ch[2])
-        # self.vis_rgbd3 = RGBD(vis_ch[2], vis_ch[3])
-        self.inf_conv=ConvLeakyRelu2d(1, inf_ch[0])
-        self.inf_rgbd1 = RGBD(inf_ch[0], inf_ch[1])
-        self.inf_rgbd2 = RGBD(inf_ch[1], inf_ch[2])
-        # self.inf_rgbd3 = RGBD(inf_ch[2], inf_ch[3])
-        # self.decode5 = ConvBnLeakyRelu2d(vis_ch[3]+inf_ch[3], vis_ch[2]+inf_ch[2])
-        self.decode4 = ConvBnLeakyRelu2d(vis_ch[2]+inf_ch[2], vis_ch[1]+vis_ch[1])
-        self.decode3 = ConvBnLeakyRelu2d(vis_ch[1]+inf_ch[1], vis_ch[0]+inf_ch[0])
-        self.decode2 = ConvBnLeakyRelu2d(vis_ch[0]+inf_ch[0], vis_ch[0])
-        self.decode1 = ConvBnTanh2d(vis_ch[0], output)
-    def forward(self, image_vis,image_ir):
-        # split data into RGB and INF
-        x_vis_origin = image_vis[:,:1]
-        x_inf_origin = image_ir
-        # encode
-        x_vis_p=self.vis_conv(x_vis_origin)
-        x_vis_p1=self.vis_rgbd1(x_vis_p)
-        x_vis_p2=self.vis_rgbd2(x_vis_p1)
-        # x_vis_p3=self.vis_rgbd3(x_vis_p2)
-
-        x_inf_p=self.inf_conv(x_inf_origin)
-        x_inf_p1=self.inf_rgbd1(x_inf_p)
-        x_inf_p2=self.inf_rgbd2(x_inf_p1)
-        # x_inf_p3=self.inf_rgbd3(x_inf_p2)
-        # decode
-        x=self.decode4(torch.cat((x_vis_p2,x_inf_p2),dim=1))
-        # x=self.decode4(x)
-        x=self.decode3(x)
-        x=self.decode2(x)
-        x=self.decode1(x)
-        return x
-
-def unit_test():
-    import numpy as np
-    x = torch.tensor(np.random.rand(2,4,480,640).astype(np.float32))
-    model = FusionNet(output=1)
-    y = model(x)
-    print('output shape:', y.shape)
-    assert y.shape == (2,1,480,640), 'output shape (2,1,480,640) is expected!'
-    print('test ok!')
-
-if __name__ == '__main__':
-    unit_test()
